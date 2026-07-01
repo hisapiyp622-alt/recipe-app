@@ -313,10 +313,33 @@ function formatDate(timestamp) {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+// URLから出典の種類を判定してバッジ用の絵文字を返す（YouTube / Instagram / Webサイト）
+function sourceBadge(url) {
+  if (!url) return "";
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host === "youtu.be" || host.endsWith("youtube.com")) return "▶";
+    if (host.endsWith("instagram.com")) return "📷";
+    return "🔗";
+  } catch {
+    return "🔗";
+  }
+}
+
+function showTilePlaceholder(photoWrap) {
+  const placeholder = document.createElement("span");
+  placeholder.className = "tile-photo-placeholder";
+  placeholder.textContent = "🍽️";
+  photoWrap.appendChild(placeholder);
+}
+
 function renderCards() {
   const filtered = allRecipes.filter(matchesFilters);
 
-  recipeCount.textContent = `${allRecipes.length}件のレシピ`;
+  recipeCount.textContent =
+    filtered.length === allRecipes.length
+      ? `${allRecipes.length}件のレシピ`
+      : `${filtered.length}件を表示中（全${allRecipes.length}件）`;
 
   cardArea.querySelectorAll(".recipe-card").forEach((el) => el.remove());
 
@@ -333,15 +356,41 @@ function renderCards() {
   filtered.forEach((recipe) => {
     const card = document.createElement("article");
     card.className = "recipe-card";
-    const hasPhoto = !!recipe.photo;
-    card.innerHTML = `
-      <div class="tile-photo" ${hasPhoto ? `style="background-image:url('${escapeHtml(recipe.photo)}')"` : ""}>
-        ${hasPhoto ? "" : `<span class="tile-photo-placeholder">🍽️</span>`}
-      </div>
-      <div class="tile-title-bar">
-        <h3 class="tile-title">${escapeHtml(recipe.title || "")}</h3>
-      </div>
-    `;
+
+    const photoWrap = document.createElement("div");
+    photoWrap.className = "tile-photo";
+    if (recipe.photo) {
+      const img = document.createElement("img");
+      img.className = "tile-img";
+      img.loading = "lazy";
+      img.alt = "";
+      img.addEventListener("error", () => {
+        img.remove();
+        showTilePlaceholder(photoWrap);
+      });
+      img.src = recipe.photo;
+      photoWrap.appendChild(img);
+    } else {
+      showTilePlaceholder(photoWrap);
+    }
+    card.appendChild(photoWrap);
+
+    const badge = sourceBadge(recipe.url);
+    if (badge) {
+      const badgeEl = document.createElement("span");
+      badgeEl.className = "tile-badge";
+      badgeEl.textContent = badge;
+      card.appendChild(badgeEl);
+    }
+
+    const titleBar = document.createElement("div");
+    titleBar.className = "tile-title-bar";
+    const title = document.createElement("h3");
+    title.className = "tile-title";
+    title.textContent = recipe.title || "";
+    titleBar.appendChild(title);
+    card.appendChild(titleBar);
+
     card.addEventListener("click", () => openViewModal(recipe));
     cardArea.appendChild(card);
   });
@@ -374,7 +423,15 @@ function openViewModal(recipe) {
   }
 
   if (recipe.url) {
-    viewUrl.textContent = recipe.url;
+    let host = "";
+    try {
+      host = new URL(recipe.url).hostname.replace(/^www\./, "");
+    } catch {}
+    let label = "元のレシピを見る";
+    if (host === "youtu.be" || host.endsWith("youtube.com")) label = "▶ YouTubeで見る";
+    else if (host.endsWith("instagram.com")) label = "📷 Instagramで見る";
+    else if (host) label = `🔗 ${host} でレシピを見る`;
+    viewUrl.textContent = label;
     viewUrl.href = recipe.url;
     viewUrl.hidden = false;
   } else {
