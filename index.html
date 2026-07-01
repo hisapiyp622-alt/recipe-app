@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#1f2d3d" />
+<title>わが家のレシピ箱</title>
+
+<!-- ホーム画面追加(PWA)対応 -->
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="レシピ箱" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- 上部:表紙のタブ -->
+<header class="box-lid">
+  <div class="lid-inner">
+    <span class="lid-tab">RECIPE BOX</span>
+    <h1 class="lid-title">わが家のレシピ箱</h1>
+    <p class="lid-sub" id="recipeCount">読み込み中…</p>
+  </div>
+</header>
+
+<main class="cabinet">
+
+  <!-- 検索 & タグ絞り込み -->
+  <section class="drawer-search">
+    <div class="search-row">
+      <input id="searchInput" type="text" placeholder="レシピ名・材料・メモで検索" autocomplete="off" />
+      <button id="addOpenBtn" class="btn-stamp" type="button">＋ 追加</button>
+    </div>
+    <div id="tagRow" class="tag-row"></div>
+  </section>
+
+  <!-- レシピ一覧(カード) -->
+  <section id="cardArea" class="card-area">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-illustration">🍳</div>
+      <p>まだレシピが登録されていません。<br />「＋ 追加」から最初の1枚を書いてみましょう。</p>
+    </div>
+  </section>
+</main>
+
+<!-- 追加/編集モーダル -->
+<div id="modalOverlay" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-tab" id="modalTab">NEW CARD</div>
+    <h2 id="modalHeading">レシピを追加</h2>
+
+    <label class="field-label" for="fTitle">料理名 <span class="req">必須</span></label>
+    <input id="fTitle" type="text" placeholder="例：豚バラ大根" />
+
+    <label class="field-label" for="fUrl">参照URL（Web・YouTube・Instagram等）</label>
+    <div class="url-row">
+      <input id="fUrl" type="url" placeholder="https://…" />
+      <button id="pasteBtn" class="btn-mini" type="button" title="クリップボードから貼り付け">貼付</button>
+    </div>
+
+    <label class="field-label" for="fWho">登録した人</label>
+    <div class="who-row" id="whoRow">
+      <button type="button" class="who-chip" data-who="久詞">久詞</button>
+      <button type="button" class="who-chip" data-who="娘">娘</button>
+      <button type="button" class="who-chip" data-who="息子">息子</button>
+    </div>
+
+    <label class="field-label" for="fTags">タグ（カンマ区切り。例：和食, 時短, 子供が好き）</label>
+    <input id="fTags" type="text" placeholder="和食, 時短" />
+
+    <label class="field-label" for="fMemo">材料・作り方メモ（任意）</label>
+    <textarea id="fMemo" rows="5" placeholder="材料や手順、味付けのコツなど自由にメモ"></textarea>
+
+    <div class="modal-actions">
+      <button id="cancelBtn" class="btn-ghost" type="button">キャンセル</button>
+      <button id="deleteBtn" class="btn-danger" type="button" hidden>削除</button>
+      <button id="saveBtn" class="btn-stamp" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- レシピ詳細表示 -->
+<div id="viewOverlay" class="modal-overlay" hidden>
+  <div class="modal-card view-card" role="dialog" aria-modal="true">
+    <div class="modal-tab" id="viewTab">CARD</div>
+    <h2 id="viewTitle"></h2>
+    <p class="view-meta" id="viewMeta"></p>
+    <a id="viewUrl" class="view-url" target="_blank" rel="noopener"></a>
+    <div class="view-tags" id="viewTags"></div>
+    <pre class="view-memo" id="viewMemo"></pre>
+    <div class="modal-actions">
+      <button id="viewCloseBtn" class="btn-ghost" type="button">閉じる</button>
+      <button id="viewEditBtn" class="btn-stamp" type="button">編集</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- Firebase (家族間でデータ同期するためのDB) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
