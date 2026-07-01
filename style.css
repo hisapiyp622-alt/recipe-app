@@ -237,53 +237,61 @@ textarea {
   padding: 2px 0;
 }
 
-/* ===== レシピカード一覧 ===== */
+/* ===== レシピ一覧(タイル) ===== */
 .card-area {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
 .recipe-card {
   position: relative;
-  background: var(--card);
-  border: 1px solid var(--line);
+  aspect-ratio: 1 / 1;
   border-radius: var(--radius-card);
-  padding: 16px 16px 14px;
-  /* 罫線ノート風の横線 */
-  background-image: repeating-linear-gradient(
-    var(--card) 0,
-    var(--card) 27px,
-    var(--rule) 28px
-  );
-  background-position: 0 46px;
+  overflow: hidden;
+  background: var(--line);
   box-shadow: 0 1px 0 rgba(43, 43, 43, 0.04);
+  transition: transform 0.1s ease;
 }
 
 .recipe-card:active {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 
-.card-top {
+.tile-photo {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
+  align-items: center;
+  justify-content: center;
 }
 
-.card-title {
+.tile-photo-placeholder {
+  font-size: 36px;
+  opacity: 0.35;
+}
+
+.tile-title-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 22px 10px 8px;
+  background: linear-gradient(to top, rgba(31, 45, 61, 0.85), rgba(31, 45, 61, 0));
+}
+
+.tile-title {
   margin: 0;
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 1.4;
-}
-
-.card-categories {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 8px;
+  line-height: 1.3;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .mini-category {
@@ -295,34 +303,9 @@ textarea {
   white-space: nowrap;
 }
 
-.card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 8px;
-}
-
-.card-tags .mini-tag {
-  font-size: 11px;
-  color: var(--muted);
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 2px 9px;
-}
-
-.card-memo-preview {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
 /* ===== 空状態 ===== */
 .empty-state {
+  grid-column: 1 / -1;
   text-align: center;
   padding: 60px 20px;
   color: var(--muted);
@@ -496,6 +479,18 @@ textarea {
   color: var(--muted);
 }
 
+.photo-preview {
+  margin-top: 8px;
+}
+
+.photo-preview img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: var(--radius-control);
+  display: block;
+}
+
 .modal-actions {
   display: flex;
   gap: 8px;
@@ -537,6 +532,15 @@ textarea {
 }
 
 /* ===== 詳細表示 ===== */
+.view-photo {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: var(--radius-control);
+  margin-bottom: 10px;
+  display: block;
+}
+
 .view-meta {
   margin: -10px 0 12px;
   font-size: 12px;
