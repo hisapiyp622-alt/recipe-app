@@ -9,17 +9,34 @@ let activeCategoryFilters = new Set();
 let searchQuery = "";
 let editingId = null;     // 編集中のレシピID（null = 新規登録）
 
-// 食材カテゴリ（複数選択可・固定リスト）
-const CATEGORIES = ["豚肉", "牛肉", "鶏肉", "魚介", "野菜", "その他"];
-const CATEGORY_ICONS = {
-  "豚肉": "🐷",
-  "牛肉": "🐮",
-  "鶏肉": "🐔",
-  "魚介": "🐟",
-  "野菜": "🥬",
-  "その他": "🍽",
-};
+// 食材カテゴリ（本人が自由に追加・削除できる。Firestore settings/categories で家族間同期）
+const categoriesRef = db.collection("settings").doc("categories");
+const DEFAULT_CATEGORIES = [
+  { name: "豚肉", icon: "🐷" },
+  { name: "牛肉", icon: "🐮" },
+  { name: "鶏肉", icon: "🐔" },
+  { name: "魚介", icon: "🐟" },
+  { name: "野菜", icon: "🥬" },
+  { name: "その他", icon: "🍽" },
+];
+// カテゴリの色は名前ごとに固定できない(自由に追加/削除されるため)ので、
+// 表示順のインデックスに応じてこのパレットから割り当てる。
+const CATEGORY_PALETTE = [
+  "#e0937c", "#a8503f", "#d9a441", "#4f7f96", "#6b9c5a", "#8a8272",
+  "#8a6fb3", "#c2703d", "#5a8f7b", "#b3547e", "#6f7ba8", "#a68a3f",
+];
+let categories = []; // Firestoreから同期される {name, icon} の配列
 let selectedCategories = new Set(); // 追加/編集モーダルで選択中のカテゴリ
+
+function categoryColor(name) {
+  const idx = categories.findIndex((c) => c.name === name);
+  return CATEGORY_PALETTE[idx === -1 ? 0 : idx % CATEGORY_PALETTE.length];
+}
+
+function categoryIcon(name) {
+  const found = categories.find((c) => c.name === name);
+  return found ? found.icon || "" : "";
+}
 
 // ===== DOM refs =====
 const $ = (id) => document.getElementById(id);
@@ -41,6 +58,13 @@ const analyzeBtn = $("analyzeBtn");
 const analyzeStatus = $("analyzeStatus");
 const categoryRow = $("categoryRow");
 const categoryFilterRow = $("categoryFilterRow");
+const manageCategoriesBtn = $("manageCategoriesBtn");
+const categoryManageOverlay = $("categoryManageOverlay");
+const categoryManageList = $("categoryManageList");
+const newCategoryIcon = $("newCategoryIcon");
+const newCategoryName = $("newCategoryName");
+const addCategoryBtn = $("addCategoryBtn");
+const categoryManageCloseBtn = $("categoryManageCloseBtn");
 const fTags = $("fTags");
 const fMemo = $("fMemo");
 const saveBtn = $("saveBtn");
@@ -69,45 +93,140 @@ function showToast(message) {
   }, 2600);
 }
 
-// ===== カテゴリチップ（固定リストなので初回に一度だけ描画） =====
+// ===== カテゴリチップ（Firestoreのカテゴリ一覧が変わるたびに再描画） =====
 function buildCategoryChip(category) {
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = "category-chip";
-  chip.dataset.category = category;
-  chip.textContent = `${CATEGORY_ICONS[category] || ""} ${category}`;
+  chip.dataset.category = category.name;
+  chip.style.setProperty("--chip-color", categoryColor(category.name));
+  chip.textContent = `${category.icon || ""} ${category.name}`.trim();
   return chip;
 }
 
 // モーダル内：複数選択トグル（保存対象）
-CATEGORIES.forEach((category) => {
-  const chip = buildCategoryChip(category);
-  chip.addEventListener("click", () => {
-    if (selectedCategories.has(category)) selectedCategories.delete(category);
-    else selectedCategories.add(category);
-    chip.classList.toggle("on", selectedCategories.has(category));
+function renderCategoryChips() {
+  categoryRow.innerHTML = "";
+  categories.forEach((category) => {
+    const chip = buildCategoryChip(category);
+    chip.classList.toggle("on", selectedCategories.has(category.name));
+    chip.addEventListener("click", () => {
+      if (selectedCategories.has(category.name)) selectedCategories.delete(category.name);
+      else selectedCategories.add(category.name);
+      chip.classList.toggle("on", selectedCategories.has(category.name));
+    });
+    categoryRow.appendChild(chip);
   });
-  categoryRow.appendChild(chip);
-});
+}
 
 // 一覧の絞り込み行：OR条件（豚肉 or 鶏肉 のように複数選ぶと該当カテゴリを含むもの全て表示）
-CATEGORIES.forEach((category) => {
-  const chip = buildCategoryChip(category);
-  chip.addEventListener("click", () => {
-    if (activeCategoryFilters.has(category)) activeCategoryFilters.delete(category);
-    else activeCategoryFilters.add(category);
-    chip.classList.toggle("on", activeCategoryFilters.has(category));
-    renderCards();
+function renderCategoryFilterRow() {
+  categoryFilterRow.innerHTML = "";
+  categories.forEach((category) => {
+    const chip = buildCategoryChip(category);
+    chip.classList.toggle("on", activeCategoryFilters.has(category.name));
+    chip.addEventListener("click", () => {
+      if (activeCategoryFilters.has(category.name)) activeCategoryFilters.delete(category.name);
+      else activeCategoryFilters.add(category.name);
+      chip.classList.toggle("on", activeCategoryFilters.has(category.name));
+      renderCards();
+    });
+    categoryFilterRow.appendChild(chip);
   });
-  categoryFilterRow.appendChild(chip);
-});
+}
 
-function setSelectedCategories(categories) {
-  selectedCategories = new Set(categories || []);
+function setSelectedCategories(names) {
+  selectedCategories = new Set(names || []);
   categoryRow.querySelectorAll(".category-chip").forEach((chip) => {
     chip.classList.toggle("on", selectedCategories.has(chip.dataset.category));
   });
 }
+
+// ===== カテゴリ管理モーダル（追加・削除） =====
+function renderCategoryManageList() {
+  categoryManageList.innerHTML = "";
+  categories.forEach((category) => {
+    const row = document.createElement("div");
+    row.className = "category-manage-row";
+
+    const badge = document.createElement("span");
+    badge.className = "mini-category";
+    badge.style.background = categoryColor(category.name);
+    badge.textContent = `${category.icon || ""} ${category.name}`.trim();
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "category-remove-btn";
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", () => removeCategory(category.name));
+
+    row.appendChild(badge);
+    row.appendChild(removeBtn);
+    categoryManageList.appendChild(row);
+  });
+}
+
+async function saveCategories(updatedList) {
+  try {
+    await categoriesRef.set({ list: updatedList });
+  } catch (err) {
+    console.error("カテゴリ更新エラー:", err);
+    showToast("カテゴリの更新に失敗しました");
+  }
+}
+
+function removeCategory(name) {
+  if (!confirm(`「${name}」を削除します。既存レシピの登録内容は変わりません。よろしいですか？`)) return;
+  saveCategories(categories.filter((c) => c.name !== name));
+}
+
+addCategoryBtn.addEventListener("click", () => {
+  const name = newCategoryName.value.trim();
+  if (!name) {
+    showToast("カテゴリ名を入力してください");
+    return;
+  }
+  if (categories.some((c) => c.name === name)) {
+    showToast("同じ名前のカテゴリが既にあります");
+    return;
+  }
+  const icon = newCategoryIcon.value.trim();
+  saveCategories([...categories, { name, icon }]);
+  newCategoryName.value = "";
+  newCategoryIcon.value = "";
+});
+
+manageCategoriesBtn.addEventListener("click", () => {
+  categoryManageOverlay.hidden = false;
+});
+categoryManageCloseBtn.addEventListener("click", () => {
+  categoryManageOverlay.hidden = true;
+});
+categoryManageOverlay.addEventListener("click", (e) => {
+  if (e.target === categoryManageOverlay) categoryManageOverlay.hidden = true;
+});
+
+// Firestoreのカテゴリ一覧をリアルタイム同期（家族の誰かが編集すれば全員に反映）。
+// ドキュメントが未作成なら初期の6カテゴリで作成する。
+categoriesRef.onSnapshot(
+  (doc) => {
+    const list = doc.exists ? doc.data().list : null;
+    if (Array.isArray(list) && list.length) {
+      categories = list;
+    } else {
+      categories = DEFAULT_CATEGORIES;
+      categoriesRef.set({ list: DEFAULT_CATEGORIES });
+    }
+    renderCategoryChips();
+    renderCategoryFilterRow();
+    renderCategoryManageList();
+    renderCards();
+  },
+  (error) => {
+    console.error("カテゴリ同期エラー:", error);
+    showToast("カテゴリの取得に失敗しました");
+  }
+);
 
 // ===== Firestore同期（リアルタイムリスナー） =====
 recipesRef.orderBy("createdAt", "desc").onSnapshot(
@@ -206,7 +325,7 @@ function renderCards() {
       ${
         (recipe.category || []).length
           ? `<div class="card-categories">${recipe.category
-              .map((c) => `<span class="mini-category" data-category="${escapeHtml(c)}">${CATEGORY_ICONS[c] || ""} ${escapeHtml(c)}</span>`)
+              .map((c) => `<span class="mini-category" style="background:${categoryColor(c)}">${categoryIcon(c)} ${escapeHtml(c)}</span>`)
               .join("")}</div>`
           : ""
       }
@@ -251,7 +370,7 @@ function openViewModal(recipe) {
   }
 
   viewCategories.innerHTML = (recipe.category || [])
-    .map((c) => `<span class="mini-category" data-category="${escapeHtml(c)}">${CATEGORY_ICONS[c] || ""} ${escapeHtml(c)}</span>`)
+    .map((c) => `<span class="mini-category" style="background:${categoryColor(c)}">${categoryIcon(c)} ${escapeHtml(c)}</span>`)
     .join("");
 
   viewTags.innerHTML = (recipe.tags || [])
