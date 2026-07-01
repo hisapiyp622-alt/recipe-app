@@ -14,6 +14,13 @@
   --who-musume: #c97d9a;
   --who-musuko: #8a9e5f;
 
+  --cat-pork: #e0937c;
+  --cat-beef: #a8503f;
+  --cat-chicken: #d9a441;
+  --cat-seafood: #4f7f96;
+  --cat-veggie: #6b9c5a;
+  --cat-other: #8a8272;
+
   --radius-card: 14px;
   --radius-control: 10px;
   --maxw: 480px;
@@ -153,6 +160,44 @@ textarea {
   color: #fdf9f0;
 }
 
+/* ===== カテゴリチップ(モーダル選択・絞り込み共通) ===== */
+.category-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-chip {
+  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.category-filter-row {
+  margin-top: 10px;
+}
+
+.category-filter-row .category-chip {
+  font-size: 12px;
+  padding: 5px 11px;
+  border: 1px solid var(--rule);
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--card);
+}
+
+.category-chip.on[data-category="豚肉"] { background: var(--cat-pork); border-color: var(--cat-pork); color: #fff; }
+.category-chip.on[data-category="牛肉"] { background: var(--cat-beef); border-color: var(--cat-beef); color: #fff; }
+.category-chip.on[data-category="鶏肉"] { background: var(--cat-chicken); border-color: var(--cat-chicken); color: #fff; }
+.category-chip.on[data-category="魚介"] { background: var(--cat-seafood); border-color: var(--cat-seafood); color: #fff; }
+.category-chip.on[data-category="野菜"] { background: var(--cat-veggie); border-color: var(--cat-veggie); color: #fff; }
+.category-chip.on[data-category="その他"] { background: var(--cat-other); border-color: var(--cat-other); color: #fff; }
+
 /* ===== レシピカード一覧 ===== */
 .card-area {
   display: flex;
@@ -224,6 +269,29 @@ textarea {
 .who-chip-mini[data-who="久詞"] { background: var(--who-kudou); }
 .who-chip-mini[data-who="娘"] { background: var(--who-musume); }
 .who-chip-mini[data-who="息子"] { background: var(--who-musuko); }
+
+.card-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.mini-category {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.mini-category[data-category="豚肉"] { background: var(--cat-pork); }
+.mini-category[data-category="牛肉"] { background: var(--cat-beef); }
+.mini-category[data-category="鶏肉"] { background: var(--cat-chicken); }
+.mini-category[data-category="魚介"] { background: var(--cat-seafood); }
+.mini-category[data-category="野菜"] { background: var(--cat-veggie); }
+.mini-category[data-category="その他"] { background: var(--cat-other); }
 
 .card-tags {
   display: flex;
@@ -498,6 +566,13 @@ textarea {
   font-size: 13px;
   color: var(--who-kudou);
   word-break: break-all;
+  margin-bottom: 10px;
+}
+
+.view-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-bottom: 10px;
 }
 
