@@ -5,10 +5,23 @@ const recipesRef = db.collection("recipes");
 // ===== state =====
 let allRecipes = [];      // Firestoreから同期された全件（新着順）
 let activeTagFilters = new Set();
+let activeCategoryFilters = new Set();
 let searchQuery = "";
 let editingId = null;     // 編集中のレシピID（null = 新規登録）
 
 const LAST_WHO_KEY = "recipeBox.lastWho";
+
+// 食材カテゴリ（複数選択可・固定リスト）
+const CATEGORIES = ["豚肉", "牛肉", "鶏肉", "魚介", "野菜", "その他"];
+const CATEGORY_ICONS = {
+  "豚肉": "🐷",
+  "牛肉": "🐮",
+  "鶏肉": "🐔",
+  "魚介": "🐟",
+  "野菜": "🥬",
+  "その他": "🍽",
+};
+let selectedCategories = new Set(); // 追加/編集モーダルで選択中のカテゴリ
 
 // ===== DOM refs =====
 const $ = (id) => document.getElementById(id);
@@ -29,6 +42,8 @@ const pasteBtn = $("pasteBtn");
 const analyzeBtn = $("analyzeBtn");
 const analyzeStatus = $("analyzeStatus");
 const whoRow = $("whoRow");
+const categoryRow = $("categoryRow");
+const categoryFilterRow = $("categoryFilterRow");
 const fTags = $("fTags");
 const fMemo = $("fMemo");
 const saveBtn = $("saveBtn");
@@ -39,6 +54,7 @@ const viewOverlay = $("viewOverlay");
 const viewTitle = $("viewTitle");
 const viewMeta = $("viewMeta");
 const viewUrl = $("viewUrl");
+const viewCategories = $("viewCategories");
 const viewTags = $("viewTags");
 const viewMemo = $("viewMemo");
 const viewEditBtn = $("viewEditBtn");
@@ -54,6 +70,46 @@ function showToast(message) {
   toastTimer = setTimeout(() => {
     toast.hidden = true;
   }, 2600);
+}
+
+// ===== カテゴリチップ（固定リストなので初回に一度だけ描画） =====
+function buildCategoryChip(category) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "category-chip";
+  chip.dataset.category = category;
+  chip.textContent = `${CATEGORY_ICONS[category] || ""} ${category}`;
+  return chip;
+}
+
+// モーダル内：複数選択トグル（保存対象）
+CATEGORIES.forEach((category) => {
+  const chip = buildCategoryChip(category);
+  chip.addEventListener("click", () => {
+    if (selectedCategories.has(category)) selectedCategories.delete(category);
+    else selectedCategories.add(category);
+    chip.classList.toggle("on", selectedCategories.has(category));
+  });
+  categoryRow.appendChild(chip);
+});
+
+// 一覧の絞り込み行：OR条件（豚肉 or 鶏肉 のように複数選ぶと該当カテゴリを含むもの全て表示）
+CATEGORIES.forEach((category) => {
+  const chip = buildCategoryChip(category);
+  chip.addEventListener("click", () => {
+    if (activeCategoryFilters.has(category)) activeCategoryFilters.delete(category);
+    else activeCategoryFilters.add(category);
+    chip.classList.toggle("on", activeCategoryFilters.has(category));
+    renderCards();
+  });
+  categoryFilterRow.appendChild(chip);
+});
+
+function setSelectedCategories(categories) {
+  selectedCategories = new Set(categories || []);
+  categoryRow.querySelectorAll(".category-chip").forEach((chip) => {
+    chip.classList.toggle("on", selectedCategories.has(chip.dataset.category));
+  });
 }
 
 // ===== Firestore同期（リアルタイムリスナー） =====
@@ -92,6 +148,12 @@ function renderTagRow() {
 
 // ===== 検索・絞り込み結果の描画 =====
 function matchesFilters(recipe) {
+  // カテゴリ絞り込み（OR条件。選んだカテゴリのどれか1つでも含んでいれば表示）
+  if (activeCategoryFilters.size > 0) {
+    const categories = recipe.category || [];
+    const hasAny = [...activeCategoryFilters].some((c) => categories.includes(c));
+    if (!hasAny) return false;
+  }
   // タグ絞り込み（AND条件）
   if (activeTagFilters.size > 0) {
     const tags = recipe.tags || [];
@@ -147,6 +209,13 @@ function renderCards() {
         <span class="who-chip-mini" data-who="${escapeHtml(recipe.who || "")}">${escapeHtml(recipe.who || "")}</span>
       </div>
       ${
+        (recipe.category || []).length
+          ? `<div class="card-categories">${recipe.category
+              .map((c) => `<span class="mini-category" data-category="${escapeHtml(c)}">${CATEGORY_ICONS[c] || ""} ${escapeHtml(c)}</span>`)
+              .join("")}</div>`
+          : ""
+      }
+      ${
         (recipe.tags || []).length
           ? `<div class="card-tags">${recipe.tags
               .map((t) => `<span class="mini-tag">${escapeHtml(t)}</span>`)
@@ -186,6 +255,10 @@ function openViewModal(recipe) {
     viewUrl.hidden = true;
   }
 
+  viewCategories.innerHTML = (recipe.category || [])
+    .map((c) => `<span class="mini-category" data-category="${escapeHtml(c)}">${CATEGORY_ICONS[c] || ""} ${escapeHtml(c)}</span>`)
+    .join("");
+
   viewTags.innerHTML = (recipe.tags || [])
     .map((t) => `<span class="mini-tag">${escapeHtml(t)}</span>`)
     .join("");
@@ -217,6 +290,7 @@ function resetForm() {
   fUrl.value = "";
   fTags.value = "";
   fMemo.value = "";
+  setSelectedCategories([]);
   const lastWho = localStorage.getItem(LAST_WHO_KEY) || "久詞";
   setSelectedWho(lastWho);
 }
@@ -256,6 +330,7 @@ function openEditModal(recipe) {
   fUrl.value = recipe.url || "";
   fTags.value = (recipe.tags || []).join(", ");
   fMemo.value = recipe.memo || "";
+  setSelectedCategories(recipe.category || []);
   setSelectedWho(recipe.who || "久詞");
 
   modalOverlay.hidden = false;
@@ -484,6 +559,7 @@ saveBtn.addEventListener("click", async () => {
     title,
     url: fUrl.value.trim(),
     who,
+    category: [...selectedCategories],
     tags,
     memo: fMemo.value.trim(),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
