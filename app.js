@@ -9,8 +9,6 @@ let activeCategoryFilters = new Set();
 let searchQuery = "";
 let editingId = null;     // 編集中のレシピID（null = 新規登録）
 
-const LAST_WHO_KEY = "recipeBox.lastWho";
-
 // 食材カテゴリ（複数選択可・固定リスト）
 const CATEGORIES = ["豚肉", "牛肉", "鶏肉", "魚介", "野菜", "その他"];
 const CATEGORY_ICONS = {
@@ -41,7 +39,6 @@ const fUrl = $("fUrl");
 const pasteBtn = $("pasteBtn");
 const analyzeBtn = $("analyzeBtn");
 const analyzeStatus = $("analyzeStatus");
-const whoRow = $("whoRow");
 const categoryRow = $("categoryRow");
 const categoryFilterRow = $("categoryFilterRow");
 const fTags = $("fTags");
@@ -203,10 +200,8 @@ function renderCards() {
     const card = document.createElement("article");
     card.className = "recipe-card";
     card.innerHTML = `
-      <span class="card-tab">${escapeHtml(recipe.who || "")}が登録</span>
       <div class="card-top">
         <h3 class="card-title">${escapeHtml(recipe.title || "")}</h3>
-        <span class="who-chip-mini" data-who="${escapeHtml(recipe.who || "")}">${escapeHtml(recipe.who || "")}</span>
       </div>
       ${
         (recipe.category || []).length
@@ -245,7 +240,7 @@ searchInput.addEventListener("input", (e) => {
 function openViewModal(recipe) {
   viewTab.textContent = "CARD";
   viewTitle.textContent = recipe.title || "";
-  viewMeta.textContent = `${recipe.who || ""}が登録・${formatDate(recipe.createdAt)}`;
+  viewMeta.textContent = formatDate(recipe.createdAt);
 
   if (recipe.url) {
     viewUrl.textContent = recipe.url;
@@ -291,24 +286,7 @@ function resetForm() {
   fTags.value = "";
   fMemo.value = "";
   setSelectedCategories([]);
-  const lastWho = localStorage.getItem(LAST_WHO_KEY) || "久詞";
-  setSelectedWho(lastWho);
 }
-
-function setSelectedWho(who) {
-  whoRow.querySelectorAll(".who-chip").forEach((chip) => {
-    chip.classList.toggle("selected", chip.dataset.who === who);
-  });
-}
-
-function getSelectedWho() {
-  const selected = whoRow.querySelector(".who-chip.selected");
-  return selected ? selected.dataset.who : "久詞";
-}
-
-whoRow.querySelectorAll(".who-chip").forEach((chip) => {
-  chip.addEventListener("click", () => setSelectedWho(chip.dataset.who));
-});
 
 function openAddModal() {
   editingId = null;
@@ -331,7 +309,6 @@ function openEditModal(recipe) {
   fTags.value = (recipe.tags || []).join(", ");
   fMemo.value = recipe.memo || "";
   setSelectedCategories(recipe.category || []);
-  setSelectedWho(recipe.who || "久詞");
 
   modalOverlay.hidden = false;
   fTitle.focus();
@@ -547,9 +524,6 @@ saveBtn.addEventListener("click", async () => {
     return;
   }
 
-  const who = getSelectedWho();
-  localStorage.setItem(LAST_WHO_KEY, who);
-
   const tags = fTags.value
     .split(",")
     .map((t) => t.trim())
@@ -558,7 +532,6 @@ saveBtn.addEventListener("click", async () => {
   const data = {
     title,
     url: fUrl.value.trim(),
-    who,
     category: [...selectedCategories],
     tags,
     memo: fMemo.value.trim(),
