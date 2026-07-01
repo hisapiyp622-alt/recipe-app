@@ -39,6 +39,7 @@
       <button id="addOpenBtn" class="btn-stamp" type="button">＋ 追加</button>
     </div>
     <div id="categoryFilterRow" class="tag-row category-filter-row"></div>
+    <button id="manageCategoriesBtn" class="btn-manage-categories" type="button">✏️ カテゴリを編集</button>
     <div id="tagRow" class="tag-row"></div>
   </section>
 
@@ -98,6 +99,27 @@
     <div class="modal-actions">
       <button id="viewCloseBtn" class="btn-ghost" type="button">閉じる</button>
       <button id="viewEditBtn" class="btn-stamp" type="button">編集</button>
+    </div>
+  </div>
+</div>
+
+<!-- カテゴリ管理モーダル -->
+<div id="categoryManageOverlay" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-tab">CATEGORIES</div>
+    <h2>カテゴリを編集</h2>
+
+    <div id="categoryManageList" class="category-manage-list"></div>
+
+    <label class="field-label">新しいカテゴリを追加</label>
+    <div class="category-add-row">
+      <input id="newCategoryIcon" class="icon-input" type="text" placeholder="絵文字" maxlength="4" />
+      <input id="newCategoryName" class="name-input" type="text" placeholder="カテゴリ名（例：麺類）" />
+      <button id="addCategoryBtn" class="btn-mini" type="button">追加</button>
+    </div>
+
+    <div class="modal-actions">
+      <button id="categoryManageCloseBtn" class="btn-ghost" type="button">閉じる</button>
     </div>
   </div>
 </div>
