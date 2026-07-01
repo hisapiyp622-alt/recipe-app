@@ -27,6 +27,18 @@ const CATEGORY_PALETTE = [
 ];
 let categories = []; // Firestoreから同期される {name, icon} の配列
 let selectedCategories = new Set(); // 追加/編集モーダルで選択中のカテゴリ
+let currentPhoto = ""; // 追加/編集モーダルで保持中の写真URL（レシピサイトから自動取得）
+
+function setPhotoPreview(url) {
+  currentPhoto = url || "";
+  if (currentPhoto) {
+    photoPreviewImg.src = currentPhoto;
+    photoPreview.hidden = false;
+  } else {
+    photoPreviewImg.src = "";
+    photoPreview.hidden = true;
+  }
+}
 
 function categoryColor(name) {
   const idx = categories.findIndex((c) => c.name === name);
@@ -56,6 +68,8 @@ const fUrl = $("fUrl");
 const pasteBtn = $("pasteBtn");
 const analyzeBtn = $("analyzeBtn");
 const analyzeStatus = $("analyzeStatus");
+const photoPreview = $("photoPreview");
+const photoPreviewImg = $("photoPreviewImg");
 const categoryRow = $("categoryRow");
 const categoryFilterRow = $("categoryFilterRow");
 const manageCategoriesBtn = $("manageCategoriesBtn");
@@ -75,6 +89,7 @@ const viewOverlay = $("viewOverlay");
 const viewTitle = $("viewTitle");
 const viewMeta = $("viewMeta");
 const viewUrl = $("viewUrl");
+const viewPhoto = $("viewPhoto");
 const viewCategories = $("viewCategories");
 const viewTags = $("viewTags");
 const viewMemo = $("viewMemo");
@@ -318,25 +333,14 @@ function renderCards() {
   filtered.forEach((recipe) => {
     const card = document.createElement("article");
     card.className = "recipe-card";
+    const hasPhoto = !!recipe.photo;
     card.innerHTML = `
-      <div class="card-top">
-        <h3 class="card-title">${escapeHtml(recipe.title || "")}</h3>
+      <div class="tile-photo" ${hasPhoto ? `style="background-image:url('${escapeHtml(recipe.photo)}')"` : ""}>
+        ${hasPhoto ? "" : `<span class="tile-photo-placeholder">🍽️</span>`}
       </div>
-      ${
-        (recipe.category || []).length
-          ? `<div class="card-categories">${recipe.category
-              .map((c) => `<span class="mini-category" style="background:${categoryColor(c)}">${categoryIcon(c)} ${escapeHtml(c)}</span>`)
-              .join("")}</div>`
-          : ""
-      }
-      ${
-        (recipe.tags || []).length
-          ? `<div class="card-tags">${recipe.tags
-              .map((t) => `<span class="mini-tag">${escapeHtml(t)}</span>`)
-              .join("")}</div>`
-          : ""
-      }
-      ${recipe.memo ? `<p class="card-memo-preview">${escapeHtml(recipe.memo)}</p>` : ""}
+      <div class="tile-title-bar">
+        <h3 class="tile-title">${escapeHtml(recipe.title || "")}</h3>
+      </div>
     `;
     card.addEventListener("click", () => openViewModal(recipe));
     cardArea.appendChild(card);
@@ -360,6 +364,14 @@ function openViewModal(recipe) {
   viewTab.textContent = "CARD";
   viewTitle.textContent = recipe.title || "";
   viewMeta.textContent = formatDate(recipe.createdAt);
+
+  if (recipe.photo) {
+    viewPhoto.src = recipe.photo;
+    viewPhoto.hidden = false;
+  } else {
+    viewPhoto.src = "";
+    viewPhoto.hidden = true;
+  }
 
   if (recipe.url) {
     viewUrl.textContent = recipe.url;
@@ -405,6 +417,7 @@ function resetForm() {
   fTags.value = "";
   fMemo.value = "";
   setSelectedCategories([]);
+  setPhotoPreview("");
 }
 
 function openAddModal() {
@@ -428,6 +441,7 @@ function openEditModal(recipe) {
   fTags.value = (recipe.tags || []).join(", ");
   fMemo.value = recipe.memo || "";
   setSelectedCategories(recipe.category || []);
+  setPhotoPreview(recipe.photo || "");
 
   modalOverlay.hidden = false;
   fTitle.focus();
@@ -556,6 +570,21 @@ function instructionsToLines(instructions) {
   return [];
 }
 
+// schema.org/Recipeのimageは string / string[] / ImageObject / ImageObject[] など表記ゆれが大きい
+function extractImageUrl(recipe) {
+  const img = recipe.image;
+  if (!img) return "";
+  if (typeof img === "string") return img;
+  if (Array.isArray(img)) {
+    const first = img[0];
+    if (typeof first === "string") return first;
+    if (first && first.url) return first.url;
+    return "";
+  }
+  if (img.url) return img.url;
+  return "";
+}
+
 function buildMemoFromRecipe(recipe, sourceUrl) {
   const lines = [];
   const ingredients = recipe.recipeIngredient || recipe.ingredients || [];
@@ -612,6 +641,11 @@ analyzeBtn.addEventListener("click", async () => {
       fTitle.value = recipe.name;
     }
 
+    const imageUrl = extractImageUrl(recipe);
+    if (imageUrl && !currentPhoto) {
+      setPhotoPreview(imageUrl);
+    }
+
     const memoText = buildMemoFromRecipe(recipe, url);
     if (fMemo.value.trim() && !confirm("メモ欄に既存の内容があります。解析結果で上書きしますか？")) {
       setAnalyzeStatus("");
@@ -651,6 +685,7 @@ saveBtn.addEventListener("click", async () => {
   const data = {
     title,
     url: fUrl.value.trim(),
+    photo: currentPhoto,
     category: [...selectedCategories],
     tags,
     memo: fMemo.value.trim(),
