@@ -10,9 +10,7 @@
   --line: #e7ddc9;
   --muted: #8a8272;
 
-  --who-kudou: #6b8f9e;
-  --who-musume: #c97d9a;
-  --who-musuko: #8a9e5f;
+  --accent-blue: #6b8f9e;
 
   --cat-pork: #e0937c;
   --cat-beef: #a8503f;
@@ -225,22 +223,6 @@ textarea {
   transform: translateY(1px);
 }
 
-/* インデックスの見出しタブ */
-.card-tab {
-  position: absolute;
-  top: -9px;
-  left: 16px;
-  font-family: var(--font-hand);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  background: var(--mustard);
-  color: var(--navy);
-  padding: 2px 10px;
-  border-radius: 3px;
-  transform: rotate(-1.5deg);
-}
-
 .card-top {
   display: flex;
   align-items: flex-start;
@@ -255,20 +237,6 @@ textarea {
   font-weight: 700;
   line-height: 1.4;
 }
-
-.who-chip-mini {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 999px;
-  color: #fff;
-  white-space: nowrap;
-}
-
-.who-chip-mini[data-who="久詞"] { background: var(--who-kudou); }
-.who-chip-mini[data-who="娘"] { background: var(--who-musume); }
-.who-chip-mini[data-who="息子"] { background: var(--who-musuko); }
 
 .card-categories {
   display: flex;
@@ -473,10 +441,10 @@ textarea {
   padding: 9px 0;
   border-radius: var(--radius-control);
   background: #fff;
-  border: 1.5px dashed var(--who-kudou);
+  border: 1.5px dashed var(--accent-blue);
   font-size: 13px;
   font-weight: 700;
-  color: var(--who-kudou);
+  color: var(--accent-blue);
   transition: opacity 0.15s ease;
 }
 
@@ -493,26 +461,6 @@ textarea {
   font-size: 12px;
   color: var(--muted);
 }
-
-.who-row {
-  display: flex;
-  gap: 8px;
-}
-
-.who-chip {
-  flex: 1 1 auto;
-  padding: 10px 0;
-  border-radius: var(--radius-control);
-  border: 1.5px solid var(--line);
-  background: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--muted);
-}
-
-.who-chip.selected[data-who="久詞"] { background: var(--who-kudou); border-color: var(--who-kudou); color: #fff; }
-.who-chip.selected[data-who="娘"] { background: var(--who-musume); border-color: var(--who-musume); color: #fff; }
-.who-chip.selected[data-who="息子"] { background: var(--who-musuko); border-color: var(--who-musuko); color: #fff; }
 
 .modal-actions {
   display: flex;
@@ -564,7 +512,7 @@ textarea {
 .view-url {
   display: inline-block;
   font-size: 13px;
-  color: var(--who-kudou);
+  color: var(--accent-blue);
   word-break: break-all;
   margin-bottom: 10px;
 }
