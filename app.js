@@ -26,6 +26,8 @@ const modalTab = $("modalTab");
 const fTitle = $("fTitle");
 const fUrl = $("fUrl");
 const pasteBtn = $("pasteBtn");
+const analyzeBtn = $("analyzeBtn");
+const analyzeStatus = $("analyzeStatus");
 const whoRow = $("whoRow");
 const fTags = $("fTags");
 const fMemo = $("fMemo");
@@ -278,6 +280,162 @@ pasteBtn.addEventListener("click", async () => {
     if (text) fUrl.value = text.trim();
   } catch (err) {
     showToast("貼り付けできませんでした。手動で貼り付けてください");
+  }
+});
+
+// ===== サイトから材料・作り方を自動解析 =====
+// レシピサイトの多くはSEO用にschema.org/Recipeの構造化データ(JSON-LD)を埋め込んでいる。
+// ブラウザから他サイトのHTMLを直接fetchするとCORSで弾かれるため、無料の中継プロキシを
+// 複数用意し、順番に試す（1つ死んでいても次を試すフォールバック）。
+const CORS_PROXIES = [
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+];
+
+async function fetchHtmlViaProxy(url) {
+  let lastErr = new Error("すべての取得経路が失敗しました");
+  for (const buildProxyUrl of CORS_PROXIES) {
+    try {
+      const res = await fetch(buildProxyUrl(url));
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const html = await res.text();
+      if (html && html.length > 200) return html;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
+// HTML内の <script type="application/ld+json"> から @type: "Recipe" を探す。
+// @graph配列や複数scriptタグに分散しているケースにも対応。
+function findRecipeJsonLd(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    let data;
+    try {
+      data = JSON.parse(script.textContent);
+    } catch {
+      continue;
+    }
+    const candidates = [];
+    const collect = (node) => {
+      if (!node) return;
+      if (Array.isArray(node)) {
+        node.forEach(collect);
+        return;
+      }
+      if (node["@graph"]) {
+        collect(node["@graph"]);
+        return;
+      }
+      candidates.push(node);
+    };
+    collect(data);
+    const recipe = candidates.find((c) => {
+      const t = c["@type"];
+      return t === "Recipe" || (Array.isArray(t) && t.includes("Recipe"));
+    });
+    if (recipe) return recipe;
+  }
+  return null;
+}
+
+// recipeInstructions は string / string[] / HowToStep[] など表記ゆれが大きいので正規化する
+function instructionsToLines(instructions) {
+  if (!instructions) return [];
+  if (typeof instructions === "string") {
+    return instructions
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (Array.isArray(instructions)) {
+    return instructions
+      .map((step) => {
+        if (typeof step === "string") return step;
+        if (step.text) return step.text;
+        if (step.itemListElement) return instructionsToLines(step.itemListElement).join(" ");
+        return "";
+      })
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function buildMemoFromRecipe(recipe, sourceUrl) {
+  const lines = [];
+  const ingredients = recipe.recipeIngredient || recipe.ingredients || [];
+  if (ingredients.length) {
+    lines.push("【材料】");
+    ingredients.forEach((i) => lines.push(`・${i}`));
+    lines.push("");
+  }
+  const steps = instructionsToLines(recipe.recipeInstructions);
+  if (steps.length) {
+    lines.push("【作り方】");
+    steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+    lines.push("");
+  }
+  lines.push(`（元サイト: ${sourceUrl}）`);
+  return lines.join("\n");
+}
+
+function setAnalyzeStatus(message) {
+  if (!message) {
+    analyzeStatus.hidden = true;
+    return;
+  }
+  analyzeStatus.textContent = message;
+  analyzeStatus.hidden = false;
+}
+
+analyzeBtn.addEventListener("click", async () => {
+  const url = fUrl.value.trim();
+  if (!url) {
+    showToast("先に参照URLを入力してください");
+    return;
+  }
+  if (!navigator.onLine) {
+    showToast("オフラインのため解析できません");
+    return;
+  }
+
+  analyzeBtn.disabled = true;
+  const originalLabel = analyzeBtn.textContent;
+  analyzeBtn.textContent = "🔍 解析中…";
+  setAnalyzeStatus("サイトを読み込んでいます…（数秒かかることがあります）");
+
+  try {
+    const html = await fetchHtmlViaProxy(url);
+    const recipe = findRecipeJsonLd(html);
+    if (!recipe) {
+      setAnalyzeStatus("");
+      showToast("このサイトからは自動解析できませんでした。手動で入力してください");
+      return;
+    }
+
+    if (recipe.name && !fTitle.value.trim()) {
+      fTitle.value = recipe.name;
+    }
+
+    const memoText = buildMemoFromRecipe(recipe, url);
+    if (fMemo.value.trim() && !confirm("メモ欄に既存の内容があります。解析結果で上書きしますか？")) {
+      setAnalyzeStatus("");
+      return;
+    }
+    fMemo.value = memoText;
+    setAnalyzeStatus("");
+    showToast("材料・作り方を自動入力しました");
+  } catch (err) {
+    console.error("解析エラー:", err);
+    setAnalyzeStatus("");
+    showToast("自動解析に失敗しました。手動で入力してください");
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = originalLabel;
   }
 });
 
