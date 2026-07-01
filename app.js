@@ -308,18 +308,38 @@ async function fetchHtmlViaProxy(url) {
   throw lastErr;
 }
 
+// サイトによってはJSON-LD内に "//" コメントや生の改行(制御文字)が混入しており、
+// 本来はJSON仕様違反のためJSON.parseが失敗する（例: gomaabura.jp）。
+// そのままでは救えないので、行コメント・ブロックコメントの除去と、文字列内の
+// 生の制御文字をスペースに置き換える緩和処理をかけてから再パースを試みる。
+function sanitizeJsonLdText(text) {
+  const ctrlRegex = new RegExp("[" + String.fromCharCode(0) + "-" + String.fromCharCode(31) + "]+", "g");
+  return text
+    .replace(/^[ \t]*\/\/.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(ctrlRegex, " ");
+}
+
+function parseJsonLdScript(rawText) {
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    try {
+      return JSON.parse(sanitizeJsonLdText(rawText));
+    } catch {
+      return null;
+    }
+  }
+}
+
 // HTML内の <script type="application/ld+json"> から @type: "Recipe" を探す。
 // @graph配列や複数scriptタグに分散しているケースにも対応。
 function findRecipeJsonLd(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
   for (const script of scripts) {
-    let data;
-    try {
-      data = JSON.parse(script.textContent);
-    } catch {
-      continue;
-    }
+    const data = parseJsonLdScript(script.textContent);
+    if (!data) continue;
     const candidates = [];
     const collect = (node) => {
       if (!node) return;
