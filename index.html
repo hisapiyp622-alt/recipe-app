@@ -38,6 +38,7 @@
       <input id="searchInput" type="text" placeholder="レシピ名・材料・メモで検索" autocomplete="off" />
       <button id="addOpenBtn" class="btn-stamp" type="button">＋ 追加</button>
     </div>
+    <div id="categoryFilterRow" class="tag-row category-filter-row"></div>
     <div id="tagRow" class="tag-row"></div>
   </section>
 
@@ -74,6 +75,9 @@
       <button type="button" class="who-chip" data-who="息子">息子</button>
     </div>
 
+    <label class="field-label">カテゴリ（複数選択可）</label>
+    <div class="category-row" id="categoryRow"></div>
+
     <label class="field-label" for="fTags">タグ（カンマ区切り。例：和食, 時短, 子供が好き）</label>
     <input id="fTags" type="text" placeholder="和食, 時短" />
 
@@ -95,6 +99,7 @@
     <h2 id="viewTitle"></h2>
     <p class="view-meta" id="viewMeta"></p>
     <a id="viewUrl" class="view-url" target="_blank" rel="noopener"></a>
+    <div class="view-categories" id="viewCategories"></div>
     <div class="view-tags" id="viewTags"></div>
     <pre class="view-memo" id="viewMemo"></pre>
     <div class="modal-actions">
