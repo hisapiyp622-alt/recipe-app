@@ -399,6 +399,33 @@ textarea {
   background: var(--line);
 }
 
+.btn-analyze {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 0;
+  border-radius: var(--radius-control);
+  background: #fff;
+  border: 1.5px dashed var(--who-kudou);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--who-kudou);
+  transition: opacity 0.15s ease;
+}
+
+.btn-analyze:active {
+  background: var(--paper);
+}
+
+.btn-analyze:disabled {
+  opacity: 0.55;
+}
+
+.analyze-status {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .who-row {
   display: flex;
   gap: 8px;
