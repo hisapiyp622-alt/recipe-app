@@ -605,6 +605,74 @@ function findRecipeJsonLd(html) {
   return null;
 }
 
+// HTMLタグを除去してテキストだけ取り出す(手順の説明文に<a>リンク等が混ざるサイト対策)。
+// DOMParserは画像読み込みやスクリプト実行をしないので、外部HTML由来の文字列でも安全。
+function stripHtml(html) {
+  return new DOMParser().parseFromString(html, "text/html").body.textContent.trim();
+}
+
+// Nadia(oceans-nadia.com)はJSON-LDを持たないNext.js製サイトで、レシピデータは
+// <script id="__NEXT_DATA__"> のJSONに入っている。そこから取り出して
+// schema.org/Recipe相当の形に正規化する。
+function findNextDataRecipe(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const script = doc.getElementById("__NEXT_DATA__");
+  if (!script) return null;
+  let data;
+  try {
+    data = JSON.parse(script.textContent);
+  } catch {
+    return null;
+  }
+  const r =
+    data && data.props && data.props.pageProps && data.props.pageProps.data
+      ? data.props.pageProps.data.publishedRecipe
+      : null;
+  if (!r || !r.title) return null;
+
+  const ingredients = (r.ingredients || [])
+    .map((i) => [i.kubun ? `(${i.kubun})` : "", i.name, i.amount].filter(Boolean).join(" ").trim())
+    .filter(Boolean);
+  const steps = (r.instructions || [])
+    .slice()
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    .map((s) => stripHtml(s.comment || ""))
+    .filter(Boolean);
+  const imagePath = r.imageSet && r.imageSet[0] && r.imageSet[0].path;
+
+  return {
+    name: r.title,
+    image: imagePath ? `https://asset.oceans-nadia.com${imagePath}` : "",
+    recipeIngredient: ingredients,
+    recipeInstructions: steps,
+    recipeYield: r.bunryoPeople ? `${r.bunryoPeople}人分` : r.yield || "",
+    cookTimeText: r.cookTime ? `${r.cookTime}分` : "",
+    tips: r.tips || "",
+    keywords: (r.sortedTags || []).map((t) => t.name).filter(Boolean),
+  };
+}
+
+// 構造化データが一切ないサイト向けの最終手段: OGPタグからタイトルと写真だけ拾う
+function findOgFallback(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const og = (p) => {
+    const meta = doc.querySelector(`meta[property="og:${p}"]`);
+    return meta ? meta.getAttribute("content") || "" : "";
+  };
+  const titleEl = doc.querySelector("title");
+  const name = (og("title") || (titleEl ? titleEl.textContent : "") || "").trim();
+  if (!name) return null;
+  return { name, image: og("image"), partial: true };
+}
+
+// schema.orgのtotalTime等はISO 8601 duration(例: PT1H10M)で入っていることが多い
+function durationToText(value) {
+  if (!value || typeof value !== "string") return "";
+  const m = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?/);
+  if (!m || (!m[1] && !m[2])) return "";
+  return `${m[1] ? `${m[1]}時間` : ""}${m[2] ? `${m[2]}分` : ""}`;
+}
+
 // recipeInstructions は string / string[] / HowToStep[] など表記ゆれが大きいので正規化する
 function instructionsToLines(instructions) {
   if (!instructions) return [];
@@ -644,6 +712,17 @@ function extractImageUrl(recipe) {
 
 function buildMemoFromRecipe(recipe, sourceUrl) {
   const lines = [];
+
+  const info = [];
+  const yieldText = Array.isArray(recipe.recipeYield) ? recipe.recipeYield[0] : recipe.recipeYield;
+  if (yieldText) info.push(`分量: ${yieldText}`);
+  const timeText = recipe.cookTimeText || durationToText(recipe.totalTime || recipe.cookTime);
+  if (timeText) info.push(`調理時間: ${timeText}`);
+  if (info.length) {
+    lines.push(info.join(" ／ "));
+    lines.push("");
+  }
+
   const ingredients = recipe.recipeIngredient || recipe.ingredients || [];
   if (ingredients.length) {
     lines.push("【材料】");
@@ -654,6 +733,11 @@ function buildMemoFromRecipe(recipe, sourceUrl) {
   if (steps.length) {
     lines.push("【作り方】");
     steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+    lines.push("");
+  }
+  if (recipe.tips) {
+    lines.push("【コツ・ポイント】");
+    lines.push(recipe.tips);
     lines.push("");
   }
   lines.push(`（元サイト: ${sourceUrl}）`);
@@ -687,7 +771,9 @@ analyzeBtn.addEventListener("click", async () => {
 
   try {
     const html = await fetchHtmlViaProxy(url);
-    const recipe = findRecipeJsonLd(html);
+    // JSON-LD → Next.js(__NEXT_DATA__) → OGPタグ の順に解析を試す
+    let recipe = findRecipeJsonLd(html) || findNextDataRecipe(html);
+    if (!recipe) recipe = findOgFallback(html);
     if (!recipe) {
       setAnalyzeStatus("");
       showToast("このサイトからは自動解析できませんでした。手動で入力してください");
@@ -701,6 +787,24 @@ analyzeBtn.addEventListener("click", async () => {
     const imageUrl = extractImageUrl(recipe);
     if (imageUrl && !currentPhoto) {
       setPhotoPreview(imageUrl);
+    }
+
+    // タグ欄が空なら、サイト側のタグ/キーワードを自動で入れる
+    const kw = recipe.keywords;
+    const tagList = Array.isArray(kw)
+      ? kw
+      : typeof kw === "string"
+        ? kw.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+    if (tagList.length && !fTags.value.trim()) {
+      fTags.value = tagList.slice(0, 5).join(", ");
+    }
+
+    if (recipe.partial) {
+      // タイトル・写真のみ取得できた場合はメモ欄には触らない
+      setAnalyzeStatus("");
+      showToast("材料は取得できませんでしたが、タイトルと写真を入力しました");
+      return;
     }
 
     const memoText = buildMemoFromRecipe(recipe, url);
