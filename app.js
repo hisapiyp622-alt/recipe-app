@@ -571,10 +571,12 @@ async function fetchViaProxy(targetUrl, buildProxyUrl, timeoutMs) {
   }
 }
 
-// Wayback Machineの照会API(archive.org/wayback/available)はCORS対応なので
-// プロキシを介さず直接呼べる。タイムスタンプ入りの正確なスナップショットURLを
-// 先に解決しておくと、プロキシ側でのリダイレクト追跡が不要になり成功率が上がる。
-// 「id_」付きURLは書き換え無しの原本HTMLを返す。
+// タイムスタンプ入りの正確なスナップショットURLを先に解決しておくと、
+// プロキシ側でのリダイレクト追跡が不要になり成功率が上がる。
+// 「id_」付きURLは書き換え無しの原本HTMLを返す。照会は2系統:
+// 1) availability API: CORS対応で直接呼べて速いが、実在するスナップショットを
+//    「無し」と返すことがある(情報が不完全)
+// 2) CDX API: 網羅的で確実だがCORS非対応のため、プロキシ経由で呼ぶ(応答は小さい)
 async function resolveArchiveUrl(url) {
   try {
     const ctrl = new AbortController();
@@ -591,8 +593,29 @@ async function resolveArchiveUrl(url) {
       }
     }
   } catch {
-    // API不調時は下のリダイレクト型URLで続行
+    // 次のCDX APIで続行
   }
+
+  // limit=-1 で最新1件のみ取得。応答は [ヘッダ行, [urlkey, timestamp, ...]] のJSON
+  const cdxUrl = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(url)}&output=json&filter=statuscode:200&limit=-1`;
+  for (const buildProxyUrl of CORS_PROXIES) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      const res = await fetch(buildProxyUrl(cdxUrl), { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const rows = JSON.parse(await res.text());
+      const last = Array.isArray(rows) && rows.length >= 2 ? rows[rows.length - 1] : null;
+      if (last && last[1]) {
+        return `https://web.archive.org/web/${last[1]}id_/${url}`;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // どちらの照会も失敗した場合の最終手段(リダイレクト型URL)
   return `https://web.archive.org/web/2id_/${url}`;
 }
 
