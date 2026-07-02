@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="style.css?v=5" />
+<link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
 
@@ -39,8 +39,11 @@
       <button id="addOpenBtn" class="btn-stamp" type="button">＋ 追加</button>
     </div>
     <div id="categoryFilterRow" class="tag-row category-filter-row"></div>
-    <button id="manageCategoriesBtn" class="btn-manage-categories" type="button">✏️ カテゴリを編集</button>
-    <div id="tagRow" class="tag-row"></div>
+    <div class="filter-tools">
+      <button id="tagToggleBtn" class="btn-tool" type="button" hidden>🏷 タグで絞り込み ▾</button>
+      <button id="manageCategoriesBtn" class="btn-tool" type="button">✏️ カテゴリを編集</button>
+    </div>
+    <div id="tagRow" class="tag-row" hidden></div>
   </section>
 
   <!-- レシピ一覧(カード) -->
@@ -134,6 +137,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

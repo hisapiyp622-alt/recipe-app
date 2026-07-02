@@ -8,6 +8,7 @@ let activeTagFilters = new Set();
 let activeCategoryFilters = new Set();
 let searchQuery = "";
 let editingId = null;     // 編集中のレシピID（null = 新規登録）
+let tagRowVisible = false; // タグ絞り込み一覧の開閉状態（普段は畳んでおく）
 
 // 食材カテゴリ（本人が自由に追加・削除できる。Firestore settings/categories で家族間同期）
 const categoriesRef = db.collection("settings").doc("categories");
@@ -55,6 +56,7 @@ const $ = (id) => document.getElementById(id);
 
 const searchInput = $("searchInput");
 const tagRow = $("tagRow");
+const tagToggleBtn = $("tagToggleBtn");
 const cardArea = $("cardArea");
 const emptyState = $("emptyState");
 const recipeCount = $("recipeCount");
@@ -257,9 +259,26 @@ recipesRef.orderBy("createdAt", "desc").onSnapshot(
 );
 
 // ===== タグ絞り込みチップ =====
+// タグが増えると一覧を圧迫するので、普段は畳んでおきボタンで開閉する
+function updateTagToggleBtn() {
+  const count = activeTagFilters.size;
+  tagToggleBtn.textContent = `🏷 タグで絞り込み${count ? `（${count}）` : ""} ${tagRowVisible ? "▴" : "▾"}`;
+  tagToggleBtn.classList.toggle("filtering", count > 0);
+}
+
+tagToggleBtn.addEventListener("click", () => {
+  tagRowVisible = !tagRowVisible;
+  tagRow.hidden = !tagRowVisible;
+  updateTagToggleBtn();
+});
+
 function renderTagRow() {
   const allTags = new Set();
   allRecipes.forEach((r) => (r.tags || []).forEach((t) => allTags.add(t)));
+
+  // タグが1つも無ければ開閉ボタンごと隠す
+  tagToggleBtn.hidden = allTags.size === 0;
+  updateTagToggleBtn();
 
   tagRow.innerHTML = "";
   [...allTags].sort((a, b) => a.localeCompare(b, "ja")).forEach((tag) => {
