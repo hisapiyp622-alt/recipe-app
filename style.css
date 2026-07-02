@@ -135,6 +135,10 @@ textarea {
   margin-top: 10px;
 }
 
+.tag-row[hidden] {
+  display: none;
+}
+
 .tag-chip {
   font-size: 12px;
   padding: 5px 11px;
@@ -238,13 +242,28 @@ textarea {
   min-width: 0;
 }
 
-.btn-manage-categories {
-  display: block;
+/* タグ絞り込みの開閉・カテゴリ編集の小さなツールボタン行 */
+.filter-tools {
+  display: flex;
+  gap: 18px;
   margin-top: 8px;
+}
+
+.btn-tool {
   font-size: 12px;
   color: var(--muted);
   text-decoration: underline;
   padding: 2px 0;
+}
+
+.btn-tool[hidden] {
+  display: none;
+}
+
+/* タグ絞り込み中は開閉ボタンを強調(閉じていても絞り込み中と分かるように) */
+.btn-tool.filtering {
+  color: var(--navy);
+  font-weight: 700;
 }
 
 /* ===== レシピ一覧(タイル) =====
