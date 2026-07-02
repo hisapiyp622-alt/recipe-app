@@ -554,19 +554,51 @@ const CORS_PROXIES = [
   (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
 ];
 
-async function fetchHtmlViaProxy(url) {
-  let lastErr = new Error("すべての取得経路が失敗しました");
-  for (const buildProxyUrl of CORS_PROXIES) {
-    try {
-      const res = await fetch(buildProxyUrl(url));
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      const html = await res.text();
-      if (html && html.length > 200) return html;
-    } catch (err) {
-      lastErr = err;
+const FETCH_TIMEOUT_MS = 10000;
+
+async function fetchViaProxy(targetUrl, buildProxyUrl) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(buildProxyUrl(targetUrl), { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const html = await res.text();
+    if (!html || html.length <= 200) throw new Error("empty response");
+    return html;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// レシピデータの抽出: JSON-LD → Next.js(__NEXT_DATA__) → OGPタグ の順に試す
+function extractRecipeFromHtml(html) {
+  return findRecipeJsonLd(html) || findNextDataRecipe(html) || findOgFallback(html);
+}
+
+// サイトによっては中継プロキシからのアクセスをブロックしている(例: レタスクラブ)。
+// その場合はWayback Machine(web.archive.org)に保存されたコピーをプロキシ経由で取得する。
+// 「2id_」はリダイレクトで最新スナップショットの原本HTMLに飛ぶ特殊URL。
+async function fetchRecipeData(url) {
+  const attempts = [
+    { target: url, label: "サイトを読み込んでいます…" },
+    { target: `https://web.archive.org/web/2id_/${url}`, label: "保存されたコピー(アーカイブ)から取得しています…" },
+  ];
+  let partial = null;
+  for (const { target, label } of attempts) {
+    setAnalyzeStatus(`${label}（数秒かかることがあります）`);
+    for (const buildProxyUrl of CORS_PROXIES) {
+      let html;
+      try {
+        html = await fetchViaProxy(target, buildProxyUrl);
+      } catch {
+        continue;
+      }
+      const recipe = extractRecipeFromHtml(html);
+      if (recipe && !recipe.partial) return recipe;
+      if (recipe && !partial) partial = recipe; // タイトル・写真のみの結果は保持しつつ、より良い結果を探し続ける
     }
   }
-  throw lastErr;
+  return partial;
 }
 
 // サイトによってはJSON-LD内に "//" コメントや生の改行(制御文字)が混入しており、
@@ -671,15 +703,15 @@ function findNextDataRecipe(html) {
   };
 }
 
-// 構造化データが一切ないサイト向けの最終手段: OGPタグからタイトルと写真だけ拾う
+// 構造化データが一切ないサイト向けの最終手段: OGPタグからタイトルと写真だけ拾う。
+// <title>までは見ない(プロキシのエラーページ等を誤って拾わないため、og:title必須)。
 function findOgFallback(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const og = (p) => {
     const meta = doc.querySelector(`meta[property="og:${p}"]`);
     return meta ? meta.getAttribute("content") || "" : "";
   };
-  const titleEl = doc.querySelector("title");
-  const name = (og("title") || (titleEl ? titleEl.textContent : "") || "").trim();
+  const name = og("title").trim();
   if (!name) return null;
   return { name, image: og("image"), partial: true };
 }
@@ -789,10 +821,7 @@ analyzeBtn.addEventListener("click", async () => {
   setAnalyzeStatus("サイトを読み込んでいます…（数秒かかることがあります）");
 
   try {
-    const html = await fetchHtmlViaProxy(url);
-    // JSON-LD → Next.js(__NEXT_DATA__) → OGPタグ の順に解析を試す
-    let recipe = findRecipeJsonLd(html) || findNextDataRecipe(html);
-    if (!recipe) recipe = findOgFallback(html);
+    const recipe = await fetchRecipeData(url);
     if (!recipe) {
       setAnalyzeStatus("");
       showToast("このサイトからは自動解析できませんでした。手動で入力してください");
