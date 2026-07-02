@@ -570,9 +570,14 @@ async function fetchViaProxy(targetUrl, buildProxyUrl) {
   }
 }
 
-// レシピデータの抽出: JSON-LD → Next.js(__NEXT_DATA__) → OGPタグ の順に試す
-function extractRecipeFromHtml(html) {
-  return findRecipeJsonLd(html) || findNextDataRecipe(html) || findOgFallback(html);
+// レシピデータの抽出: JSON-LD → Next.js(__NEXT_DATA__) → サイト個別対応 → OGPタグ の順に試す
+function extractRecipeFromHtml(html, sourceUrl) {
+  return (
+    findRecipeJsonLd(html) ||
+    findNextDataRecipe(html) ||
+    findSirogohanRecipe(html, sourceUrl) ||
+    findOgFallback(html)
+  );
 }
 
 // サイトによっては中継プロキシからのアクセスをブロックしている(例: レタスクラブ)。
@@ -593,7 +598,7 @@ async function fetchRecipeData(url) {
       } catch {
         continue;
       }
-      const recipe = extractRecipeFromHtml(html);
+      const recipe = extractRecipeFromHtml(html, url);
       if (recipe && !recipe.partial) return recipe;
       if (recipe && !partial) partial = recipe; // タイトル・写真のみの結果は保持しつつ、より良い結果を探し続ける
     }
@@ -700,6 +705,63 @@ function findNextDataRecipe(html) {
     cookTimeText: r.cookTime ? `${r.cookTime}分` : "",
     tips: r.tips || "",
     keywords: (r.sortedTags || []).map((t) => t.name).filter(Boolean),
+  };
+}
+
+// 白ごはん.com(sirogohan.com)は構造化データを持たないが、HTML構造が安定している
+// (#materialセクションに材料、#howtoセクションに作り方)ので、そこから直接抽出する。
+function findSirogohanRecipe(html, sourceUrl) {
+  try {
+    const host = new URL(sourceUrl).hostname;
+    if (!/(^|\.)sirogohan\.com$/.test(host)) return null;
+  } catch {
+    return null;
+  }
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const material = doc.querySelector("#material");
+  const howto = doc.querySelector("#howto");
+  if (!material || !howto) return null;
+
+  const ingredients = [...material.querySelectorAll("li")]
+    .map((li) => li.textContent.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  // 見出し「〇〇の材料 (２〜３人分)」のspan部分が分量
+  const yieldSpan = material.querySelector(".material-ttl span");
+  const recipeYield = yieldSpan ? yieldSpan.textContent.replace(/[()（）]/g, "").trim() : "";
+
+  // 作り方は工程ブロック(h3見出し+解説文)ごとに1ステップとしてまとめる
+  const steps = [...howto.querySelectorAll(".howto-block")]
+    .map((block) => {
+      const title = block.querySelector("h3");
+      const texts = [...block.querySelectorAll("p")]
+        .map((p) => p.textContent.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      return [title ? `＜${title.textContent.trim()}＞` : "", ...texts].filter(Boolean).join("\n");
+    })
+    .filter(Boolean);
+
+  if (!ingredients.length && !steps.length) return null;
+
+  const og = (p) => {
+    const meta = doc.querySelector(`meta[property="og:${p}"]`);
+    return meta ? meta.getAttribute("content") || "" : "";
+  };
+  const h1 = doc.querySelector("h1");
+  const name = (h1 ? h1.textContent.trim() : og("title")).replace(/のレシピ\/作り方.*$/, "");
+  const kwMeta = doc.querySelector('meta[name="keywords"]');
+  const keywords = kwMeta
+    ? kwMeta.getAttribute("content").split(",").map((s) => s.trim())
+        .filter((t) => t && t !== "レシピ" && t !== "作り方")
+    : [];
+
+  return {
+    name,
+    image: og("image"),
+    recipeIngredient: ingredients,
+    recipeInstructions: steps,
+    recipeYield,
+    keywords,
   };
 }
 
