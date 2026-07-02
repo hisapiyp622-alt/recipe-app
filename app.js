@@ -554,11 +554,12 @@ const CORS_PROXIES = [
   (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
 ];
 
-const FETCH_TIMEOUT_MS = 10000;
+const FETCH_TIMEOUT_MS = 12000;         // 直接取得
+const ARCHIVE_FETCH_TIMEOUT_MS = 25000; // アーカイブ(web.archive.org)は応答が遅いので長めに待つ
 
-async function fetchViaProxy(targetUrl, buildProxyUrl) {
+async function fetchViaProxy(targetUrl, buildProxyUrl, timeoutMs) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs || FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(buildProxyUrl(targetUrl), { signal: ctrl.signal });
     if (!res.ok) throw new Error(`status ${res.status}`);
@@ -568,6 +569,31 @@ async function fetchViaProxy(targetUrl, buildProxyUrl) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Wayback Machineの照会API(archive.org/wayback/available)はCORS対応なので
+// プロキシを介さず直接呼べる。タイムスタンプ入りの正確なスナップショットURLを
+// 先に解決しておくと、プロキシ側でのリダイレクト追跡が不要になり成功率が上がる。
+// 「id_」付きURLは書き換え無しの原本HTMLを返す。
+async function resolveArchiveUrl(url) {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`, {
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      const snap = data && data.archived_snapshots && data.archived_snapshots.closest;
+      if (snap && snap.available && snap.timestamp) {
+        return `https://web.archive.org/web/${snap.timestamp}id_/${url}`;
+      }
+    }
+  } catch {
+    // API不調時は下のリダイレクト型URLで続行
+  }
+  return `https://web.archive.org/web/2id_/${url}`;
 }
 
 // レシピデータの抽出: JSON-LD → Next.js(__NEXT_DATA__) → サイト個別対応 → OGPタグ の順に試す
@@ -580,21 +606,17 @@ function extractRecipeFromHtml(html, sourceUrl) {
   );
 }
 
-// サイトによっては中継プロキシからのアクセスをブロックしている(例: レタスクラブ)。
-// その場合はWayback Machine(web.archive.org)に保存されたコピーをプロキシ経由で取得する。
-// 「2id_」はリダイレクトで最新スナップショットの原本HTMLに飛ぶ特殊URL。
+// サイトによっては中継プロキシからのアクセスをブロックしたり、大きなページを
+// 途中で切り詰めて返したりする(材料・作り方が欠ける)。直接取得で完全なデータが
+// 得られなければ、Wayback Machine(web.archive.org)の保存コピーから取得する。
 async function fetchRecipeData(url) {
-  const attempts = [
-    { target: url, label: "サイトを読み込んでいます…" },
-    { target: `https://web.archive.org/web/2id_/${url}`, label: "保存されたコピー(アーカイブ)から取得しています…" },
-  ];
   let partial = null;
-  for (const { target, label } of attempts) {
-    setAnalyzeStatus(`${label}（数秒かかることがあります）`);
+
+  const tryTarget = async (target, timeoutMs) => {
     for (const buildProxyUrl of CORS_PROXIES) {
       let html;
       try {
-        html = await fetchViaProxy(target, buildProxyUrl);
+        html = await fetchViaProxy(target, buildProxyUrl, timeoutMs);
       } catch {
         continue;
       }
@@ -602,7 +624,18 @@ async function fetchRecipeData(url) {
       if (recipe && !recipe.partial) return recipe;
       if (recipe && !partial) partial = recipe; // タイトル・写真のみの結果は保持しつつ、より良い結果を探し続ける
     }
-  }
+    return null;
+  };
+
+  setAnalyzeStatus("サイトを読み込んでいます…（数秒かかることがあります）");
+  let recipe = await tryTarget(url, FETCH_TIMEOUT_MS);
+  if (recipe) return recipe;
+
+  setAnalyzeStatus("保存されたコピー(アーカイブ)から取得しています…（30秒ほどかかることがあります）");
+  const archiveUrl = await resolveArchiveUrl(url);
+  recipe = await tryTarget(archiveUrl, ARCHIVE_FETCH_TIMEOUT_MS);
+  if (recipe) return recipe;
+
   return partial;
 }
 
