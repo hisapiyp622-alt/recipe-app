@@ -13,6 +13,8 @@ let favoritesOnly = false;        // ★お気に入りのみ表示
 let filterUncategorized = false;  // カテゴリ未設定のみ表示（移行分の整理用）
 let renderObserver = null;        // 一覧の順次描画用IntersectionObserver
 const RENDER_CHUNK = 60;          // 一覧を一度に描画する件数(残りはスクロールに応じて追加)
+let tagRowExpanded = false;       // タグ一覧の「すべて表示」状態
+const TAG_DISPLAY_LIMIT = 30;     // タグ一覧に最初から表示する個数(使用回数の多い順)
 
 // 食材カテゴリ（本人が自由に追加・削除できる。Firestore settings/categories で家族間同期）
 const categoriesRef = db.collection("settings").doc("categories");
@@ -301,20 +303,36 @@ favToggleBtn.addEventListener("click", () => {
   renderCards();
 });
 
+// タグが数百個あると一覧が使い物にならないので、使用回数の多い順に上位だけ表示し、
+// 「すべて表示」で全タグに切り替えられるようにする
 function renderTagRow() {
-  const allTags = new Set();
-  allRecipes.forEach((r) => (r.tags || []).forEach((t) => allTags.add(t)));
+  const tagCounts = new Map();
+  allRecipes.forEach((r) => (r.tags || []).forEach((t) => tagCounts.set(t, (tagCounts.get(t) || 0) + 1)));
 
   // タグが1つも無ければ開閉ボタンごと隠す
-  tagToggleBtn.hidden = allTags.size === 0;
+  tagToggleBtn.hidden = tagCounts.size === 0;
   updateTagToggleBtn();
 
   tagRow.innerHTML = "";
-  [...allTags].sort((a, b) => a.localeCompare(b, "ja")).forEach((tag) => {
+
+  // 使用回数の多い順(同数なら五十音順)
+  const sorted = [...tagCounts.keys()].sort(
+    (a, b) => tagCounts.get(b) - tagCounts.get(a) || a.localeCompare(b, "ja")
+  );
+
+  let visible = sorted;
+  if (!tagRowExpanded && sorted.length > TAG_DISPLAY_LIMIT) {
+    const shown = new Set(sorted.slice(0, TAG_DISPLAY_LIMIT));
+    activeTagFilters.forEach((t) => shown.add(t)); // 絞り込み中のタグは圏外でも常に表示
+    visible = sorted.filter((t) => shown.has(t));
+  }
+
+  visible.forEach((tag) => {
+    const count = tagCounts.get(tag);
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "tag-chip" + (activeTagFilters.has(tag) ? " active" : "");
-    chip.textContent = tag;
+    chip.textContent = count >= 2 ? `${tag} ${count}` : tag;
     chip.addEventListener("click", () => {
       if (activeTagFilters.has(tag)) activeTagFilters.delete(tag);
       else activeTagFilters.add(tag);
@@ -323,6 +341,18 @@ function renderTagRow() {
     });
     tagRow.appendChild(chip);
   });
+
+  if (sorted.length > TAG_DISPLAY_LIMIT) {
+    const moreChip = document.createElement("button");
+    moreChip.type = "button";
+    moreChip.className = "tag-chip tag-more";
+    moreChip.textContent = tagRowExpanded ? "▴ 少なく表示" : `▾ すべて表示（全${sorted.length}個）`;
+    moreChip.addEventListener("click", () => {
+      tagRowExpanded = !tagRowExpanded;
+      renderTagRow();
+    });
+    tagRow.appendChild(moreChip);
+  }
 }
 
 // ===== 検索・絞り込み結果の描画 =====
