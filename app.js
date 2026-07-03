@@ -9,6 +9,10 @@ let activeCategoryFilters = new Set();
 let searchQuery = "";
 let editingId = null;     // 編集中のレシピID（null = 新規登録）
 let tagRowVisible = false; // タグ絞り込み一覧の開閉状態（普段は畳んでおく）
+let favoritesOnly = false;        // ★お気に入りのみ表示
+let filterUncategorized = false;  // カテゴリ未設定のみ表示（移行分の整理用）
+let renderObserver = null;        // 一覧の順次描画用IntersectionObserver
+const RENDER_CHUNK = 60;          // 一覧を一度に描画する件数(残りはスクロールに応じて追加)
 
 // 食材カテゴリ（本人が自由に追加・削除できる。Firestore settings/categories で家族間同期）
 const categoriesRef = db.collection("settings").doc("categories");
@@ -57,6 +61,8 @@ const $ = (id) => document.getElementById(id);
 const searchInput = $("searchInput");
 const tagRow = $("tagRow");
 const tagToggleBtn = $("tagToggleBtn");
+const favToggleBtn = $("favToggleBtn");
+const dupWarning = $("dupWarning");
 const cardArea = $("cardArea");
 const emptyState = $("emptyState");
 const recipeCount = $("recipeCount");
@@ -97,6 +103,7 @@ const viewTags = $("viewTags");
 const viewMemo = $("viewMemo");
 const viewEditBtn = $("viewEditBtn");
 const viewCloseBtn = $("viewCloseBtn");
+const viewFavBtn = $("viewFavBtn");
 
 const toast = $("toast");
 
@@ -150,6 +157,20 @@ function renderCategoryFilterRow() {
     });
     categoryFilterRow.appendChild(chip);
   });
+
+  // 末尾に「未分類」チップ（カテゴリが1つも付いていないレシピの整理用）
+  const uncatChip = document.createElement("button");
+  uncatChip.type = "button";
+  uncatChip.className = "category-chip";
+  uncatChip.style.setProperty("--chip-color", "#8a8272");
+  uncatChip.textContent = "❓ 未分類";
+  uncatChip.classList.toggle("on", filterUncategorized);
+  uncatChip.addEventListener("click", () => {
+    filterUncategorized = !filterUncategorized;
+    uncatChip.classList.toggle("on", filterUncategorized);
+    renderCards();
+  });
+  categoryFilterRow.appendChild(uncatChip);
 }
 
 function setSelectedCategories(names) {
@@ -272,6 +293,14 @@ tagToggleBtn.addEventListener("click", () => {
   updateTagToggleBtn();
 });
 
+// ★お気に入りのみ表示のトグル
+favToggleBtn.addEventListener("click", () => {
+  favoritesOnly = !favoritesOnly;
+  favToggleBtn.classList.toggle("filtering", favoritesOnly);
+  favToggleBtn.textContent = favoritesOnly ? "★ お気に入りのみ表示中" : "★ お気に入り";
+  renderCards();
+});
+
 function renderTagRow() {
   const allTags = new Set();
   allRecipes.forEach((r) => (r.tags || []).forEach((t) => allTags.add(t)));
@@ -298,11 +327,14 @@ function renderTagRow() {
 
 // ===== 検索・絞り込み結果の描画 =====
 function matchesFilters(recipe) {
-  // カテゴリ絞り込み（OR条件。選んだカテゴリのどれか1つでも含んでいれば表示）
-  if (activeCategoryFilters.size > 0) {
+  // ★お気に入りのみ
+  if (favoritesOnly && !recipe.favorite) return false;
+  // カテゴリ絞り込み（OR条件。「未分類」チップはカテゴリ未設定のレシピにマッチ）
+  if (activeCategoryFilters.size > 0 || filterUncategorized) {
     const categories = recipe.category || [];
     const hasAny = [...activeCategoryFilters].some((c) => categories.includes(c));
-    if (!hasAny) return false;
+    const isUncategorized = filterUncategorized && categories.length === 0;
+    if (!hasAny && !isUncategorized) return false;
   }
   // タグ絞り込み（AND条件）
   if (activeTagFilters.size > 0) {
@@ -352,6 +384,57 @@ function showTilePlaceholder(photoWrap) {
   photoWrap.appendChild(placeholder);
 }
 
+function buildCard(recipe) {
+  const card = document.createElement("article");
+  card.className = "recipe-card";
+
+  const photoWrap = document.createElement("div");
+  photoWrap.className = "tile-photo";
+  if (recipe.photo) {
+    const img = document.createElement("img");
+    img.className = "tile-img";
+    img.loading = "lazy";
+    img.alt = "";
+    img.addEventListener("error", () => {
+      img.remove();
+      showTilePlaceholder(photoWrap);
+    });
+    img.src = recipe.photo;
+    photoWrap.appendChild(img);
+  } else {
+    showTilePlaceholder(photoWrap);
+  }
+  card.appendChild(photoWrap);
+
+  if (recipe.favorite) {
+    const fav = document.createElement("span");
+    fav.className = "tile-fav";
+    fav.textContent = "★";
+    card.appendChild(fav);
+  }
+
+  const badge = sourceBadge(recipe.url);
+  if (badge) {
+    const badgeEl = document.createElement("span");
+    badgeEl.className = "tile-badge";
+    badgeEl.textContent = badge;
+    card.appendChild(badgeEl);
+  }
+
+  const titleBar = document.createElement("div");
+  titleBar.className = "tile-title-bar";
+  const title = document.createElement("h3");
+  title.className = "tile-title";
+  title.textContent = recipe.title || "";
+  titleBar.appendChild(title);
+  card.appendChild(titleBar);
+
+  card.addEventListener("click", () => openViewModal(recipe));
+  return card;
+}
+
+// 件数が増えても一覧が重くならないよう、タイルはRENDER_CHUNK件ずつ順次描画する。
+// 末尾の番兵(sentinel)が画面に近づいたら次のチャンクを追加。
 function renderCards() {
   const filtered = allRecipes.filter(matchesFilters);
 
@@ -360,7 +443,11 @@ function renderCards() {
       ? `${allRecipes.length}件のレシピ`
       : `${filtered.length}件を表示中（全${allRecipes.length}件）`;
 
-  cardArea.querySelectorAll(".recipe-card").forEach((el) => el.remove());
+  if (renderObserver) {
+    renderObserver.disconnect();
+    renderObserver = null;
+  }
+  cardArea.querySelectorAll(".recipe-card, .load-sentinel").forEach((el) => el.remove());
 
   if (filtered.length === 0) {
     emptyState.hidden = false;
@@ -372,47 +459,36 @@ function renderCards() {
   }
   emptyState.hidden = true;
 
-  filtered.forEach((recipe) => {
-    const card = document.createElement("article");
-    card.className = "recipe-card";
+  let rendered = 0;
+  const sentinel = document.createElement("div");
+  sentinel.className = "load-sentinel";
 
-    const photoWrap = document.createElement("div");
-    photoWrap.className = "tile-photo";
-    if (recipe.photo) {
-      const img = document.createElement("img");
-      img.className = "tile-img";
-      img.loading = "lazy";
-      img.alt = "";
-      img.addEventListener("error", () => {
-        img.remove();
-        showTilePlaceholder(photoWrap);
-      });
-      img.src = recipe.photo;
-      photoWrap.appendChild(img);
+  const appendChunk = () => {
+    filtered.slice(rendered, rendered + RENDER_CHUNK).forEach((recipe) => {
+      cardArea.appendChild(buildCard(recipe));
+    });
+    rendered = Math.min(rendered + RENDER_CHUNK, filtered.length);
+    if (rendered < filtered.length) {
+      cardArea.appendChild(sentinel); // 末尾に移動
     } else {
-      showTilePlaceholder(photoWrap);
+      sentinel.remove();
+      if (renderObserver) {
+        renderObserver.disconnect();
+        renderObserver = null;
+      }
     }
-    card.appendChild(photoWrap);
+  };
 
-    const badge = sourceBadge(recipe.url);
-    if (badge) {
-      const badgeEl = document.createElement("span");
-      badgeEl.className = "tile-badge";
-      badgeEl.textContent = badge;
-      card.appendChild(badgeEl);
-    }
-
-    const titleBar = document.createElement("div");
-    titleBar.className = "tile-title-bar";
-    const title = document.createElement("h3");
-    title.className = "tile-title";
-    title.textContent = recipe.title || "";
-    titleBar.appendChild(title);
-    card.appendChild(titleBar);
-
-    card.addEventListener("click", () => openViewModal(recipe));
-    cardArea.appendChild(card);
-  });
+  appendChunk();
+  if (rendered < filtered.length) {
+    renderObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) appendChunk();
+      },
+      { rootMargin: "800px" }
+    );
+    renderObserver.observe(sentinel);
+  }
 }
 
 function escapeHtml(str) {
@@ -428,10 +504,31 @@ searchInput.addEventListener("input", (e) => {
 });
 
 // ===== 詳細モーダル =====
+function updateViewFavBtn(favorite) {
+  viewFavBtn.textContent = favorite ? "★" : "☆";
+  viewFavBtn.classList.toggle("on", !!favorite);
+}
+
 function openViewModal(recipe) {
   viewTab.textContent = "CARD";
   viewTitle.textContent = recipe.title || "";
   viewMeta.textContent = formatDate(recipe.createdAt);
+
+  // お気に入りトグル（保存はFirestoreへ。onSnapshot経由で一覧の★も更新される）
+  updateViewFavBtn(recipe.favorite);
+  viewFavBtn.onclick = async () => {
+    const newValue = !recipe.favorite;
+    recipe.favorite = newValue;
+    updateViewFavBtn(newValue);
+    try {
+      await recipesRef.doc(recipe.id).update({ favorite: newValue });
+    } catch (err) {
+      console.error("お気に入り更新エラー:", err);
+      recipe.favorite = !newValue;
+      updateViewFavBtn(!newValue);
+      showToast("お気に入りの更新に失敗しました");
+    }
+  };
 
   if (recipe.photo) {
     viewPhoto.src = recipe.photo;
@@ -486,6 +583,42 @@ viewOverlay.addEventListener("click", (e) => {
 
 const viewTab = $("viewTab");
 
+// ===== 追加時のURL重複チェック =====
+// 末尾スラッシュや共有時に付くトラッキング用パラメータ(rtg, utm_*)の違いを吸収して比較する
+function normalizeUrlForDup(rawUrl) {
+  try {
+    const u = new URL(rawUrl.trim());
+    const params = new URLSearchParams(u.search);
+    [...params.keys()].forEach((k) => {
+      if (k === "rtg" || k.startsWith("utm_")) params.delete(k);
+    });
+    const query = params.toString();
+    return `${u.origin}${u.pathname.replace(/\/$/, "")}${query ? `?${query}` : ""}`;
+  } catch {
+    return rawUrl.trim().replace(/\/$/, "");
+  }
+}
+
+function findDuplicateByUrl(rawUrl) {
+  if (!rawUrl) return null;
+  const normalized = normalizeUrlForDup(rawUrl);
+  return allRecipes.find(
+    (r) => r.id !== editingId && r.url && normalizeUrlForDup(r.url) === normalized
+  ) || null;
+}
+
+function updateDupWarning() {
+  const dup = findDuplicateByUrl(fUrl.value.trim());
+  if (dup) {
+    dupWarning.textContent = `⚠️ このURLは「${dup.title}」として登録済みです`;
+    dupWarning.hidden = false;
+  } else {
+    dupWarning.hidden = true;
+  }
+}
+
+fUrl.addEventListener("input", updateDupWarning);
+
 // ===== 追加・編集モーダル =====
 function resetForm() {
   fTitle.value = "";
@@ -494,6 +627,7 @@ function resetForm() {
   fMemo.value = "";
   setSelectedCategories([]);
   setPhotoPreview("");
+  dupWarning.hidden = true;
 }
 
 function openAddModal() {
@@ -538,7 +672,10 @@ modalOverlay.addEventListener("click", (e) => {
 pasteBtn.addEventListener("click", async () => {
   try {
     const text = await navigator.clipboard.readText();
-    if (text) fUrl.value = text.trim();
+    if (text) {
+      fUrl.value = text.trim();
+      updateDupWarning();
+    }
   } catch (err) {
     showToast("貼り付けできませんでした。手動で貼り付けてください");
   }
@@ -1002,6 +1139,14 @@ saveBtn.addEventListener("click", async () => {
   if (!navigator.onLine) {
     showToast("オフラインのため保存できません");
     return;
+  }
+
+  // 新規登録時のみ、同じURLの二重登録を確認する
+  if (!editingId) {
+    const dup = findDuplicateByUrl(fUrl.value.trim());
+    if (dup && !confirm(`このURLは「${dup.title}」として登録済みです。それでも追加しますか？`)) {
+      return;
+    }
   }
 
   const tags = fTags.value

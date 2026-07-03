@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
 
@@ -40,6 +40,7 @@
     </div>
     <div id="categoryFilterRow" class="tag-row category-filter-row"></div>
     <div class="filter-tools">
+      <button id="favToggleBtn" class="btn-tool" type="button">★ お気に入り</button>
       <button id="tagToggleBtn" class="btn-tool" type="button" hidden>🏷 タグで絞り込み ▾</button>
       <button id="manageCategoriesBtn" class="btn-tool" type="button">✏️ カテゴリを編集</button>
     </div>
@@ -69,6 +70,7 @@
       <input id="fUrl" type="url" placeholder="https://…" />
       <button id="pasteBtn" class="btn-mini" type="button" title="クリップボードから貼り付け">貼付</button>
     </div>
+    <p id="dupWarning" class="dup-warning" hidden></p>
     <button id="analyzeBtn" class="btn-analyze" type="button">🔍 材料・作り方を自動解析</button>
     <p id="analyzeStatus" class="analyze-status" hidden></p>
     <div id="photoPreview" class="photo-preview" hidden>
@@ -96,6 +98,7 @@
 <div id="viewOverlay" class="modal-overlay" hidden>
   <div class="modal-card view-card" role="dialog" aria-modal="true">
     <div class="modal-tab" id="viewTab">CARD</div>
+    <button id="viewFavBtn" class="fav-btn" type="button" title="お気に入り">☆</button>
     <img id="viewPhoto" class="view-photo" alt="" hidden />
     <h2 id="viewTitle"></h2>
     <p class="view-meta" id="viewMeta"></p>
@@ -137,6 +140,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

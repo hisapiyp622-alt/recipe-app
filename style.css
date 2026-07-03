@@ -327,6 +327,17 @@ textarea {
   pointer-events: none;
 }
 
+/* お気に入りの星(タイル左上。右上は出典バッジ) */
+.tile-fav {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 15px;
+  color: var(--mustard);
+  text-shadow: 0 1px 2px rgba(31, 45, 61, 0.55);
+  pointer-events: none;
+}
+
 .tile-title-bar {
   position: absolute;
   left: 0;
@@ -527,6 +538,13 @@ textarea {
   opacity: 0.55;
 }
 
+.dup-warning {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rule);
+}
+
 .analyze-status {
   margin: 6px 0 0;
   font-size: 12px;
@@ -586,6 +604,22 @@ textarea {
 }
 
 /* ===== 詳細表示 ===== */
+/* 詳細カード右上のお気に入りトグル */
+.fav-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 6px;
+  z-index: 1;
+}
+
+.fav-btn.on {
+  color: var(--mustard);
+}
+
 .view-photo {
   width: 100%;
   max-height: 220px;
