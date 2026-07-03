@@ -155,6 +155,13 @@ textarea {
   color: #fdf9f0;
 }
 
+/* タグ一覧の「すべて表示/少なく表示」チップ */
+.tag-chip.tag-more {
+  border-style: dashed;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 /* ===== カテゴリチップ(モーダル選択・絞り込み共通) ===== */
 .category-row {
   display: flex;
